@@ -1,0 +1,271 @@
+
+
+-------------------------------------------------------------to setup static ip and common things--------------------------
+
+!!!!!!! All machines should be in same network and able to ping with each other(Bastation; Master-1,2,3; Worker-1,2,3)
+
+###disable firewall and selinux(in local lab setup
+###setup the hostname
+
+
+
+###STATIC_IP_MUST_SETUP(below steps are usable to setup the static ip)
+
+static additional step:-
+sudo vi /etc/cloud/cloud.cfg.d/99-disable-network-config.cfg
+network: {config: disabled}
+
+then in /etc/netplan/<file_name>
+network:
+  version: 2
+  ethernets:
+    ens34:
+     dhcp4: no
+     addresses:
+       - 192.168.17.74/22
+     routes:
+       - to: default
+         via: 192.168.16.1
+     nameservers:
+       addresses:
+         - 192.168.19.25
+
+       #ens35:
+     #dhcp4: true
+__________________
+These below steps are not mandotary
+
+sudo systemctl restart NetworkManager   (if not available install network-manager)
+nmcli connection add con-name static ifname ens34 type ethernet autoconnect yes ipv4.addresses 192.168.17.17/22
+sudo systemctl restart NetworkManager
+nmcli con up static
+
+_______________
+/etc/hosts    ##in Master-1
+
+192.168.17.74 Master-1.lab.example.com
+192.168.17.139 Master-2.lab.example.com
+192.168.18.91 Master-3.lab.example.com
+192.168.18.77 Bastation.lab.example.com 
+<ip_address>		  my.app.lab.example.com
+
+
+####copy to the user who you want , execute below commands(Recommended to go with regular user)------
+scp -r /etc/hosts root@Worker-1.lab.example.com:/etc/hosts
+scp -r /etc/hosts root@Worker-2.lab.example.com:/etc/hosts
+scp -r /etc/hosts root@Worker-3.lab.example.com:/etc/hosts
+scp -r /etc/hosts root@Bastation.lab.example.com:/etc/hosts
+
+
+!!!!!!!for our server default static IP will be assigned(replace with each machine ips)
+
+
+PORT ENABLING MUST(in our local lab env. not requires)
+
+
+
+-------------------------------------------------------------------in all machines--------------------------------------------------
+
+sudo apt update
+sudo swapoff -a
+sudo sed -i '/ swap / s/^/#/' /etc/fstab
+mount -a  (run systemctl daemon-reload before mount -a)
+
+apt-get install -y apt-transport-https ca-certificates curl gpg chrony containerd 
+
+
+Load the kernel Module:
+
+modprobe br_netfilter
+modprobe ip_vs
+modprobe ip_vs_rr
+modprobe ip_vs_wrr
+modprobe ip_vs_sh
+modprobe overlay
+
+---
+Verify the modules are loaded or not: 
+# lsmod | egrep 'br_netfilter|ip_vs|ip_vs_rr|ip_vs_sh|ip_vs_wrr|overlay'
+---
+
+cat <<EOF | sudo tee /etc/modules-load.d/k8s.conf
+overlay
+br_netfilter
+EOF
+---
+sudo modprobe overlay
+sudo modprobe br_netfilter
+
+---
+
+
+cat <<EOF | sudo tee /etc/sysctl.d/k8s.conf
+net.bridge.bridge-nf-call-iptables  = 1
+net.bridge.bridge-nf-call-ip6tables = 1
+net.ipv4.ip_forward                 = 1
+EOF
+
+sudo sysctl --system
+sudo apt update
+sudo apt install -y containerd (NOTE: no need to run container things on Termianl OR Bastation)
+
+
+sudo mkdir -p /etc/containerd
+containerd config default | sudo tee /etc/containerd/config.toml
+
+
+
+---
+
+sudo  vi /etc/containerd/config.toml
+
+SystemdCgroup = true
+
+sudo systemctl restart containerd
+sudo systemctl enable containerd
+
+############################################################  only in Masters   #####################################
+
+for kubectl; kubelet; kubeadm
+
+for 1.32 version
+
+https://v1-32.docs.kubernetes.io/docs/setup/production-environment/tools/kubeadm/install-kubeadm/
+
+sudo apt-get update
+sudo apt-get install -y apt-transport-https ca-certificates curl gpg
+sudo mkdir -p -m 755 /etc/apt/keyrings
+curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.32/deb/Release.key | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.32/deb/ /' | sudo tee /etc/apt/sources.list.d/kubernetes.list
+sudo apt-get update
+sudo apt-get install -y kubelet kubeadm kubectl
+sudo apt-mark hold kubelet kubeadm kubectl
+sudo systemctl enable --now kubelet containerd
+
+
+
+#################
+calico troubleshoot(at last  after the kubeadm init command in first node)
+
+kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/calico.yaml
+
+you will get error below:-
+error: error validating "https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/calico.yaml": error validating data: failed to download openapi: Get "http://localhost:8080/openapi/v2?timeout=32s": dial tcp 127.0.0.1:8080: connect: connection refused; if you choose to ignore these errors, turn validation off with --validate=false
+
+
+
+kubeadm init --control-plane-endpoint=192.168.17.18 --apiserver-advertise-address=192.168.17.17 --image-repository=registry.sahir-api.dgsn.gov.ma:5001 --v=10
+
+
+####join command will be genearted
+
+example_command:::
+
+Execute this command which is generated once in Master primary in all other Master_node
+
+sudo kubeadm join 192.168.18.91:6443 --token wthqq0.kvya8c4jdaocuw59 \
+        --discovery-token-ca-cert-hash sha256:48fc1c7467b507f6f8ff39f620915e8cf653410006f4bd7506b50542cbeff98e \
+        --control-plane --certificate-key 3e573640da73c902bf6e6c49ffeabe3d39fe0a4c17b1719f85bcad3649e5e647
+
+
+Execute this command which is generated once in all Worker nodes to join
+
+sudo kubeadm join 192.168.18.91:6443 --token vwj5ap.yyfifmsw91fm2pst \
+        --discovery-token-ca-cert-hash sha256:48fc1c7467b507f6f8ff39f620915e8cf653410006f4bd7506b50542cbeff98e
+
+
+IF NEED ################ if want to recreate token and certifcate in primary node again to initiate rejoin , use below commands
+
+kubeadm token create --print-join-command
+kubeadm init phase upload-certs --upload-certs
+
+
+once done with everything
+
+move admin.conf file to normaluser@master-ip or to root user
+
+mkdir -p $HOME/.kube
+sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+sudo chown $(id -u):$(id -g) $HOME/.kube/config
+
+#admin.conf to config
+
+
+
+/etc/kuberne
+
+
+
+
+	
+----------------------------------------------------Troubleshoot in all masters if issue -----------------------------------------------
+
+
+to reinitiate kubeadm
+
+sudo kubeadm reset -f
+sudo rm -rf /etc/kubernetes
+sudo rm -rf /var/lib/etcd
+sudo rm -rf ~/.kube 
+sudo rm -rf /etc/cni/net.d
+sudo rm -rf /var/lib/kubelet
+sudo systemctl restart kubelet containerd
+
+
+
+
+kubectl get pods
+
+
+kuber.repo
+
+
+############if  need
+sudo mkdir -p /etc/apt/keyrings
+
+curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.32/deb/Release.key \
+ | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+ 
+ 
+ echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.32/deb/ /" | sudo tee /etc/apt/sources.list.d/kubernetes.list
+ 
+ 
+ 
+ 
+ 
+
+
+
+
+ 
+ ---------------------------------------------------------errors while joinng the nodes---------------------------------------------------------
+ 
+ 
+ member or learner(other master nodes) should be sync with the leader(primary master node)
+ number of members increases (due to multiple times trying to join)
+ 
+ etcd should be fine
+ 
+##verify the manifests directory (/etc/kubernetes). following below files should be presented.
+ 
+etcd.yaml  
+kube-apiserver.yaml  
+kube-controller-manager.yaml  
+kube-scheduler.yaml
+
+
+
+
+make worker to pull image from registry node in disconnected environment (pre-requisite):------------
+sudo vi /etc/containers/registries.conf
+sudo vi /etc/containerd/config.toml
+
+if any issue with the certificates:--------------
+cp registry.crt /usr/local/share/ca-certificates/
+update-ca-certificates
+systemctl restart containerd
+
+
+
+
+
