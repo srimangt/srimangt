@@ -1,0 +1,174 @@
+												
+												------------------Worker node and Registry node synchronization-------------------
+												
+												
+##Registry should be hosted as HTTPS ; otherwise worker node(containerd) will not able to pull the image
+because worker node will be send the https request to registry
+
+REGISTRY TLS CA certificate creation??????????????
+
+aviod to host the registry to using direct ip address
+--------------------------------------
+!!!!!!!!!!!!!!!very important
+
+IN REGISTRY NODE------
+sudo vi /etc/hosts
+
+192.168.18.19 registry.ourdomain.com
+
+wq!
+
+for example see below link:::
+
+https://registry.ourdomain.com:5003
+
+----
+
+openssl genrsa -out ca.key 4096
+
+###ca.key created
+
+###use below command to get out ca.crt using ca.key
+
+openssl req -x509 -new -nodes -key ca.key -sha256 -days 3650 -out ca.crt
+
+###then CLI will be prompted for below required deatils:
+
+Country Name (2 letter code) [AU]: IN
+State or Province Name (full name) []: Bihar
+Locality Name (eg, city) []: Patna
+Organization Name (eg, company) []: Lab
+Organizational Unit Name (eg, section) []: DevOps
+Common Name (e.g. server FQDN or YOUR name) []: registry-lab-ca
+Email Address []:<leave as blank>
+
+###create openssl.cnf
+
+cat > openssl.cnf <<EOF
+[req]
+distinguished_name = dn
+req_extensions = v3_req
+prompt = no
+
+[dn]
+CN = registry.pronteff.com         #Note- dont use "registry-lab-ca" as CN here
+
+[v3_req]
+subjectAltName = @alt_names
+keyUsage = critical, digitalSignature, keyEncipherment
+extendedKeyUsage = serverAuth
+
+[alt_names]
+DNS.1 = registry.pronteff.com
+IP.1 = 192.168.18.19
+EOF
+
+###create registry.key
+
+openssl genrsa -out registry.key 4096
+
+###use below command to get out registry.csr using registry.key
+openssl req -new -key registry.key -out registry.csr -config openssl.cnf
+
+###finally create registry.crt using registry.csr; ca.crt ; ca.key
+
+openssl x509 -req -in registry.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out registry.crt -days 3650 -sha256 -extfile openssl.cnf -extensions v3_req
+
+
+
+###verify
+
+openssl x509 -in registry.crt -text -noout | grep -A 2 "Subject Alternative Name"
+
+###We must see the below output
+
+X509v3 Subject Alternative Name:
+    DNS:registry.ourdomain.com, IP Address:192.168.18.19
+	
+	
+	
+###Copy ca.crt on all worker nodes including master also-----
+scp ca.crt worker1:/tmp/
+
+
+###############Wherever we copied then execute below commands on worker nodes ; master optional
+
+
+sudo cp /tmp/ca.crt /usr/local/share/ca-certificates/
+sudo update-ca-certificates
+sudo systemctl restart containerd
+
+### ON REGISTRY NODE
+
+podman run -d   --name test-registry   -p 5003:5000   -v /var/lib/registry:/var/lib/registry   -v /root/registry.crt:/certs/registry.crt:Z  -v /root/registry.key:/certs/registry.key:Z   -e REGISTRY_HTTP_TLS_CERTIFICATE=/certs/registry.crt -e REGISTRY_HTTP_TLS_KEY=/certs/registry.key   registry:2
+
+###IMAGE
+then as usual podman pull ; podman tag; podman push to private registry
+
+###verify on registry node
+curl -k https://registry.pronteff.com:5003/v2/
+###on worker node
+curl https://registry.pronteff.com:5003/v2/_catalog
+EXPEC_OUTPUT:   {"repositories":["library/httpd"]}
+
+ 
+
+
+
+
+
+
+
+
+TROUBLESHOOT IF 
+
+
+
+scp ca.crt adminuser@192.168.17.11:/tmp
+scp ca.crt w1@192.168.17.8:/tmp
+scp ca.crt w2@192.168.17.9:/tmp
+scp ca.crt w3@192.168.17.13:/tmp
+
+
+
+
+
+
+
+PART-1
+
+cp /tmp/ca.crt /usr/local/share/ca-certificates/ca.crt
+update-ca-certificates
+
+
+
+PART -2
+
+mkdir -p /etc/containerd/certs.d/192.168.17.19:5000
+vi /etc/containerd/certs.d/192.168.17.19:5000/hosts.toml
+
+server = "https://192.168.17.19:5000"
+
+[host."https://192.168.17.19:5000"]
+ capabilities = ["pull", "resolve", "push"]
+ ca = "/etc/ssl/certs/repo-server.pem"
+
+wq!
+
+cp /tmp/ca.crt /etc/ssl/certs/repo-server.pem
+systemctl restart containerd
+
+
+podman pull registry.pronteff.com:5000/library/httpd:latest
+
+
+
+
+kubeadm config images pull \
+  --kubernetes-version=v1.32.13 \
+  --image-repository=10.121.10.200:5001
+
+
+	
+	
+	
