@@ -1,3 +1,5 @@
+Daily Notes - 06/07/2026 - OCP learnt - ScalingUP; ScalingDown(nooba-pod) 
+
 Daily Notes-07/07/2026
 ocp-learnt PV, PVC, storage class, dynamically creation of PV
 Scaled up and down the pod- monitored background process- whether PVC created newly or same PVC will be get used or not
