@@ -1,0 +1,10 @@
+Daily Notes-07/07/2026
+ocp-learnt PV, PVC, storage class, dynamically creation of PV
+Scaled up and down the pod- monitored background process- whether PVC created newly or same PVC will be get used or not
+which will be pod get deleted first or which pod will be deleted first.
+monitored the environment, 
+learning how to setup log target from datapower especially 429,500 400, 404
+KUBELET- will watches the pods- which is running, crashloopback, imagepullbackoff error, completed mode everything kubelet will ensure the state of the pod...
+
+08/07/2026  - i learnt ----> how to check backend URL on indus  ---> in indus its different---> find the API - check the URL in invoke(copy that environment variable)---
+---continue ---- go to catalog properties check the URL
