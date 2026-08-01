@@ -10,3 +10,29 @@ KUBELET- will watches the pods- which is running, crashloopback, imagepullbackof
 
 08/07/2026  - i learnt ----> how to check backend URL on indus  ---> in indus its different---> find the API - check the URL in invoke(copy that environment variable)---
 ---continue ---- go to catalog properties check the URL
+
+
+-----------------------------------------------------
+
+Issue faced ---> Backup issue due to SFTP password expiration in indus, took manual backup of portal and management
+gone thorugh the restoration steps (yamls)
+apiVersion: management.apiconnect.ibm.com/v1beta1
+kind: ManagementRestore
+metadata:
+  generateName: management-current-data
+spec:
+  subsystemName: prod-apimgmt-mgmt
+backup:
+  protocol: sftp
+  host: 10.90.46.4
+  port: 22
+  path: /bkp/apicbackup/mgmtbackup/prod-apimg-xxxx
+backupId: "id_of_just_taken_bakup_manually"
+
+
+
+----------------
+
+certificate updated in uat and production both; dr is pending..Alternatively, both...
+when we try to update in server.yaml   put only certificate_file_name  not certificate_file_name.jks -->.X.X.X.X.X.X>X>X>X>X>X>X>X>X
+  
